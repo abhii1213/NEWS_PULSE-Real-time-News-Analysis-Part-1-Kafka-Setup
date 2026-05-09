@@ -1,0 +1,61 @@
+Understanding the Project Structure — What Each File Does
+Before running the producer and consumer, it helps to understand what each file in the project actually does. The code is organised into small, focused files so each one has a single job.
+
+
+========================================================================================
+PRODUCER
+========================================================================================
+
+Producer — producer/
+producer/
+├── news_producer.py
+└── utils/
+    ├── __init__.py
+    ├── logger.py
+    └── news_client.py
+
+news_producer.py — the main entry point you run in the terminal. It reads your configuration from the .env file, connects to Kafka, and starts the polling loop. Every 15 minutes it calls the news client to fetch articles, then sends each article as a message to the Kafka topic. It also handles Kafka connection retries on startup and flushes all pending messages cleanly when you stop it with Ctrl+C.
+
+utils/logger.py — sets up a consistent logging format used across all files. Instead of plain print() statements, every log line includes a timestamp, log level (INFO, ERROR, WARNING), and which file produced the message. This makes it easy to see at a glance what is happening and when — especially useful when the producer and consumer are both running side by side in separate terminals.
+
+utils/news_client.py — handles all communication with the NewsAPI. It holds the list of 6 supported categories, builds the correct API request for each one, and handles error cases like timeouts, bad responses, and articles with missing fields. It also enriches each article with extra fields before returning it — adding _category, _ingested_at, _source_name, and _pipeline_version so this context is not lost once the raw JSON is processed downstream.
+
+utils/__init__.py — an empty file that tells Python to treat the utils/ folder as a package so the other files inside it can be imported cleanly.
+
+
+
+========================================================================================
+CONSUMER
+========================================================================================
+
+
+Consumer — consumer/
+consumer/
+├── news_consumer.py
+└── utils/
+    ├── __init__.py
+    ├── logger.py
+    └── s3_client.py
+
+
+news_consumer.py — the main entry point for the consumer. It connects to both Kafka and AWS S3 on startup and verifies both are reachable before processing anything. It then runs a continuous loop — reading messages from the raw-news Kafka topic, accumulating them into a batch, and triggering an upload to S3 when either the batch reaches 50 messages or 2 minutes pass, whichever comes first. Kafka offsets are only committed after a successful S3 upload, so if an upload fails no messages are lost — they will be retried on the next flush cycle.
+
+utils/s3_client.py — handles all communication with AWS S3. It takes a batch of articles, converts them to NDJSON format (one JSON object per line), generates a time-partitioned S3 file path in the format bronze/YYYY/MM/DD/HH/batch_timestamp.json, and uploads the file using your AWS credentials. It also includes a lightweight connection check on startup that verifies your bucket exists and is accessible before the consumer starts processing any messages — this catches credential or bucket name mistakes immediately rather than failing silently after the first batch.
+
+utils/logger.py — identical in purpose to the producer's logger. Both the producer and consumer use the same logging setup so their output looks consistent when running side by side.
+
+utils/__init__.py — same as in the producer — makes the utils/ folder importable as a Python package.
+
+
+
+
+========================================================================================
+========================================================================================
+
+
+Why Split Into utils/?
+A common beginner pattern is to write everything in one large file. This works fine for small scripts but becomes hard to read and maintain quickly. Splitting into utils/ gives you three benefits:
+
+Readability — news_producer.py reads like a clear story of what the producer does, without being buried in HTTP request logic or AWS SDK calls
+Testability — you can test news_client.py or s3_client.py independently without running the full Kafka pipeline
+Reusability — if you add a second consumer later (e.g. one that writes to a database instead of S3), it can reuse the same logger.py without duplicating code
