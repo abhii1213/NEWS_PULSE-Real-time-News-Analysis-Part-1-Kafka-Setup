@@ -9,3 +9,6 @@ Built a real-time streaming ingestion pipeline using Python, Apache Kafka, AWS S
 4. Automatically loads those saved files into a database called Snowflake
 5. Cleans and organises the data using a tool called dbt
 6. Displays the cleaned data in a live dashboard built with Streamlit
+
+
+Refer - https://github.com/abhii1213/NEWS_PULSE_DBT_NEWS_PIPELINE for dbt setups
